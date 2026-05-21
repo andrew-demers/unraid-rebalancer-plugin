@@ -4,8 +4,8 @@
   <!ENTITY author    "ADemers">
   <!ENTITY version   "2025.05.21">
   <!ENTITY launch    "RebalancerMain">
-  <!ENTITY pluginURL "https://raw.githubusercontent.com/ADemers-tricentis/unraid-rebalancer/main/rebalancer-plugin/rebalancer.plg">
-  <!ENTITY pkgURL    "https://github.com/ADemers-tricentis/unraid-rebalancer/releases/download/&version;/rebalancer-&version;.txz">
+  <!ENTITY pluginURL "https://raw.githubusercontent.com/andrew-demers/unraid-rebalancer/main/rebalancer-plugin/rebalancer.plg">
+  <!ENTITY pkgURL    "https://github.com/andrew-demers/unraid-rebalancer/releases/download/&version;/rebalancer-&version;.txz">
   <!ENTITY stateDir  "/boot/config/plugins/&name;">
   <!ENTITY emhttpDir "/usr/local/emhttp/plugins/&name;">
 ]>
@@ -15,7 +15,7 @@
         launch="&launch;"
         pluginURL="&pluginURL;"
         min="6.9.0"
-        support="https://github.com/ADemers-tricentis/unraid-rebalancer">
+        support="https://github.com/andrew-demers/unraid-rebalancer">
 
 <CHANGES>
 ###2025.05.21
