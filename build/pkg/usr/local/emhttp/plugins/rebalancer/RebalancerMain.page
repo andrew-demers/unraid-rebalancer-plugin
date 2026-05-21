@@ -1,7 +1,7 @@
 Menu="Utilities"
 Title="Rebalancer"
-Icon="balance-scale"
-Tag="balance-scale"
+Icon="random"
+Tag="random"
 ---
 <?php
 require_once '/usr/local/emhttp/plugins/rebalancer/include/common.php';
@@ -26,7 +26,7 @@ $config  = get_config();
   <!-- Header -->
   <div class="section">
     <div class="rebalancer-header">
-      <h2><i class="fa fa-balance-scale"></i>&nbsp;Rebalancer</h2>
+      <h2><i class="fa fa-random"></i>&nbsp;Rebalancer</h2>
       <span id="status-badge" class="status-badge <?= $running ? 'running' : 'stopped' ?>">
         <?= $running ? 'Running' : 'Stopped' ?>
       </span>
