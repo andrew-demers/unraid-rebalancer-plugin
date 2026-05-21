@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
   <!ENTITY name      "rebalancer">
   <!ENTITY author    "Dink">
-  <!ENTITY version   "2025.05.21c">
+  <!ENTITY version   "2025.05.22">
   <!ENTITY launch    "RebalancerMain">
   <!ENTITY pluginURL "https://raw.githubusercontent.com/andrew-demers/unraid-rebalancer-plugin/main/rebalancer.plg">
   <!ENTITY pkgURL    "https://github.com/andrew-demers/unraid-rebalancer-plugin/releases/download/v&version;/rebalancer-&version;.txz">
@@ -18,7 +18,7 @@
         support="https://github.com/andrew-demers/unraid-rebalancer-plugin">
 
 <CHANGES>
-###2025.05.21c
+###2025.05.22
 - Change icon to fa-random
 - Update author to Dink
 
