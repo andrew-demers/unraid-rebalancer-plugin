@@ -1,0 +1,463 @@
+Menu="Utilities"
+Title="Rebalancer"
+Icon="balance-scale"
+Tag="balance-scale"
+---
+<?php
+require_once '/usr/local/emhttp/plugins/rebalancer/include/common.php';
+
+// Detect plugin version from the Python script
+$version = '0.2.0';
+$script  = PLUGIN_DIR . '/rebalancer.py';
+if (file_exists($script)) {
+    $head = file_get_contents($script, false, null, 0, 2048);
+    if (preg_match('/__version__\s*=\s*["\']([^"\']+)["\']/', $head, $m)) {
+        $version = $m[1];
+    }
+}
+
+$running = is_running();
+$config  = get_config();
+?>
+<link rel="stylesheet" href="/plugins/rebalancer/assets/rebalancer.css">
+
+<div class="rebalancer-main">
+
+  <!-- Header -->
+  <div class="section">
+    <div class="rebalancer-header">
+      <h2><i class="fa fa-balance-scale"></i>&nbsp;Rebalancer</h2>
+      <span id="status-badge" class="status-badge <?= $running ? 'running' : 'stopped' ?>">
+        <?= $running ? 'Running' : 'Stopped' ?>
+      </span>
+      <span class="version-tag">v<?= htmlspecialchars($version) ?></span>
+    </div>
+  </div>
+
+  <!-- Disk Overview -->
+  <div class="section">
+    <div class="section-title"><i class="fa fa-hdd-o"></i> Disk Overview</div>
+    <div id="disk-grid" class="disk-grid">
+      <div class="notice"><i class="fa fa-spinner fa-spin"></i>&nbsp;Loading disk status&hellip;</div>
+    </div>
+  </div>
+
+  <!-- Plan Summary -->
+  <div class="section">
+    <div class="section-title"><i class="fa fa-tasks"></i> Rebalancing Plan</div>
+    <div id="plan-summary">
+      <div class="notice"><i class="fa fa-spinner fa-spin"></i>&nbsp;Loading plan&hellip;</div>
+    </div>
+    <div id="pending-list" style="margin-top:10px;"></div>
+  </div>
+
+  <!-- Current Transfer (shown when running) -->
+  <div class="section" id="current-section" style="display:none;">
+    <div class="section-title"><i class="fa fa-exchange"></i> Current Transfer</div>
+    <div id="current-transfer" class="current-transfer">
+      <div class="transfer-path" id="ct-path">&mdash;</div>
+      <div class="transfer-meta">
+        <span id="ct-route">&mdash;</span>
+        <span id="ct-size">&mdash;</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="section">
+    <div class="section-title"><i class="fa fa-play-circle"></i> Controls</div>
+
+    <div id="controls-stopped">
+      <div class="control-buttons">
+        <button class="btn btn-primary" id="btn-start" onclick="startRebalance(false)">
+          <i class="fa fa-play"></i> Scan &amp; Rebalance
+        </button>
+        <button class="btn btn-info" id="btn-dryrun" onclick="dryRun()">
+          <i class="fa fa-search"></i> Dry Run
+        </button>
+        <button class="btn btn-secondary" id="btn-retry" onclick="retryErrors()">
+          <i class="fa fa-refresh"></i> Retry Errors
+        </button>
+      </div>
+      <div class="options-row">
+        <label>
+          <input type="checkbox" id="opt-force-rescan">
+          Force rescan (discard plan)
+        </label>
+        <label>
+          Limit:&nbsp;<input type="number" id="opt-limit" value="0" min="0" step="1" title="0 = unlimited">
+          <small style="color:#888">&nbsp;transfers (0=unlimited)</small>
+        </label>
+      </div>
+    </div>
+
+    <div id="controls-running" style="display:none;">
+      <div class="control-buttons">
+        <button class="btn btn-danger" id="btn-stop" onclick="stopRebalance()">
+          <i class="fa fa-stop"></i> Stop Gracefully
+        </button>
+      </div>
+      <p style="font-size:0.82rem;color:#999;margin-top:10px;">
+        <i class="fa fa-info-circle"></i>
+        Stop waits for the current transfer to finish before exiting. Data is safe at all times.
+      </p>
+    </div>
+
+    <!-- Dry run output (collapsible) -->
+    <div id="dryrun-section" style="display:none; margin-top:14px;">
+      <div style="font-size:0.82rem;font-weight:600;color:#aaa;margin-bottom:6px;">
+        <i class="fa fa-file-text-o"></i> Dry Run Output
+        <button class="btn btn-secondary" style="padding:2px 8px;font-size:0.75rem;margin-left:8px;" onclick="$('#dryrun-section').hide();">
+          <i class="fa fa-times"></i>
+        </button>
+      </div>
+      <div class="dryrun-output"><pre id="dryrun-output-pre"></pre></div>
+    </div>
+  </div>
+
+  <!-- Transfer Log -->
+  <div class="section">
+    <div class="section-title log-toggle" id="log-toggle" onclick="toggleLog()">
+      <span><i class="fa fa-list-alt"></i> Transfer Log</span>
+      <i class="fa fa-chevron-down"></i>
+    </div>
+    <div id="log-content">
+      <div style="margin-bottom:8px;display:flex;gap:10px;align-items:center;">
+        <button class="btn btn-secondary" style="padding:4px 10px;font-size:0.8rem;" onclick="loadLog()">
+          <i class="fa fa-refresh"></i> Refresh
+        </button>
+        <label style="font-size:0.82rem;color:#aaa;">
+          Lines:&nbsp;<input type="number" id="log-lines-count" value="50" min="10" max="500" step="10"
+            style="width:60px;background:#383838;border:1px solid #555;border-radius:4px;color:#e0e0e0;padding:3px 6px;">
+        </label>
+      </div>
+      <div class="log-table-wrapper">
+        <table class="log-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Status</th>
+              <th>Size</th>
+              <th>Source</th>
+              <th>Target</th>
+              <th>Path</th>
+            </tr>
+          </thead>
+          <tbody id="log-tbody">
+            <tr><td colspan="6" style="text-align:center;color:#666;padding:16px;">
+              Click Refresh to load log entries.
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- .rebalancer-main -->
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+(function() {
+  'use strict';
+
+  var pollTimer = null;
+  var POLL_INTERVAL = 5000;
+  var AJAX = '/plugins/rebalancer/include/ajax/';
+
+  // ---- Utility ----
+
+  function formatBytes(n) {
+    if (!n || n <= 0) return '0 B';
+    var units = ['B','KB','MB','GB','TB','PB'];
+    var i = 0, v = n;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return (i === 0) ? n + ' B' : v.toFixed(1) + ' ' + units[i];
+  }
+
+  function shortPath(fullPath) {
+    var parts = fullPath ? fullPath.split('/') : [];
+    return parts.length > 3 ? parts.slice(3).join('/') : fullPath;
+  }
+
+  function diskName(p) {
+    return p ? p.split('/').pop() : p;
+  }
+
+  function usageClass(pct) {
+    if (pct >= 90) return 'red';
+    if (pct >= 80) return 'orange';
+    if (pct >= 70) return 'yellow';
+    return 'green';
+  }
+
+  function showToast(msg, type) {
+    var t = document.createElement('div');
+    t.className = 'toast ' + (type || 'info');
+    t.textContent = msg;
+    document.getElementById('toast-container').appendChild(t);
+    setTimeout(function() { t.remove(); }, 4000);
+  }
+
+  // ---- Disk view ----
+
+  function updateDiskView(drives) {
+    var grid = document.getElementById('disk-grid');
+    if (!drives || !drives.length) {
+      grid.innerHTML = '<div class="notice"><i class="fa fa-exclamation-circle"></i>&nbsp;No disk data available. Run a scan to populate.</div>';
+      return;
+    }
+    var html = '';
+    drives.forEach(function(d) {
+      var cls = usageClass(d.used_pct);
+      var name = diskName(d.path);
+      html += '<div class="disk-card">' +
+        '<div class="disk-name">' + name + '</div>' +
+        '<div class="disk-stats">' +
+          '<span>' + formatBytes(d.used_bytes) + ' / ' + formatBytes(d.total_bytes) + '</span>' +
+          '<span class="disk-pct ' + cls + '">' + d.used_pct + '%</span>' +
+        '</div>' +
+        '<div class="usage-bar"><div class="usage-fill usage-fill-' + cls + '" style="width:' + Math.min(100, d.used_pct) + '%"></div></div>' +
+        '<div style="font-size:0.75rem;color:#888;margin-top:5px;">' + formatBytes(d.free_bytes) + ' free</div>' +
+        '</div>';
+    });
+    grid.innerHTML = html;
+  }
+
+  // ---- Plan summary ----
+
+  function updatePlanSummary(summary, remaining_bytes, total_bytes, pending) {
+    var el = document.getElementById('plan-summary');
+    if (!summary || Object.keys(summary).length === 0) {
+      el.innerHTML = '<div class="notice"><i class="fa fa-info-circle"></i>&nbsp;No plan found. Click <strong>Dry Run</strong> to preview or <strong>Scan &amp; Rebalance</strong> to start.</div>';
+      document.getElementById('pending-list').innerHTML = '';
+      return;
+    }
+
+    var statuses = ['pending','in_progress','cleaned','skipped_full','skipped_in_use','skipped','error_copy','error_verify','error_delete','error_path','error_timeout'];
+    var gridHtml = '<div class="plan-grid">';
+    statuses.forEach(function(s) {
+      var cnt = summary[s] || 0;
+      if (cnt === 0 && s !== 'pending' && s !== 'cleaned' && s !== 'in_progress') return;
+      var catClass = s.startsWith('error') ? 'error' : s.startsWith('skipped') ? 'skipped' : (s === 'in_progress' ? 'progress' : s);
+      var label = s.replace(/_/g,' ').replace(/\b\w/g, function(c){ return c.toUpperCase(); });
+      gridHtml += '<div class="plan-stat ' + catClass + '">' +
+        '<div class="plan-stat-value">' + cnt + '</div>' +
+        '<div class="plan-stat-label">' + label + '</div>' +
+        '</div>';
+    });
+    gridHtml += '</div>';
+
+    if (total_bytes > 0) {
+      gridHtml += '<div class="plan-bytes-row">Total: <strong>' + formatBytes(total_bytes) + '</strong>';
+      if (remaining_bytes > 0) {
+        gridHtml += '&nbsp;&nbsp;Remaining: <strong>' + formatBytes(remaining_bytes) + '</strong>';
+      }
+      gridHtml += '</div>';
+    }
+
+    el.innerHTML = gridHtml;
+
+    // Pending list (up next)
+    var pl = document.getElementById('pending-list');
+    if (pending && pending.length) {
+      var plHtml = '<div style="font-size:0.8rem;font-weight:600;color:#aaa;margin-bottom:6px;">Up Next</div>';
+      pending.forEach(function(e) {
+        plHtml += '<div class="pending-item">' +
+          '<span class="pi-path" title="' + e.path + '">' + shortPath(e.path) + '</span>' +
+          '<span class="pi-route">' + diskName(e.source_disk) + ' <span class="arrow">&rarr;</span> ' + diskName(e.target_disk) + '</span>' +
+          '<span class="pi-size">' + formatBytes(e.size_bytes) + '</span>' +
+          '</div>';
+      });
+      pl.innerHTML = plHtml;
+    } else {
+      pl.innerHTML = '';
+    }
+  }
+
+  // ---- Current transfer ----
+
+  function updateCurrentTransfer(current) {
+    var sec = document.getElementById('current-section');
+    if (current && current.length) {
+      var e = current[0];
+      document.getElementById('ct-path').textContent = shortPath(e.path);
+      document.getElementById('ct-route').innerHTML =
+        diskName(e.source_disk) + ' <span class="arrow">&rarr;</span> ' + diskName(e.target_disk);
+      document.getElementById('ct-size').textContent = formatBytes(e.size_bytes);
+      sec.style.display = '';
+    } else {
+      sec.style.display = 'none';
+    }
+  }
+
+  // ---- Controls visibility ----
+
+  function updateControls(running) {
+    document.getElementById('controls-stopped').style.display = running ? 'none' : '';
+    document.getElementById('controls-running').style.display = running ? '' : 'none';
+    document.getElementById('status-badge').className = 'status-badge ' + (running ? 'running' : 'stopped');
+    document.getElementById('status-badge').textContent = running ? 'Running' : 'Stopped';
+  }
+
+  // ---- Status refresh ----
+
+  function refreshStatus() {
+    $.getJSON(AJAX + 'status.php', function(data) {
+      updateDiskView(data.drives);
+      updatePlanSummary(data.summary, data.remaining_bytes, data.total_bytes, data.pending);
+      updateCurrentTransfer(data.current);
+      updateControls(data.running);
+      if (data.running && !pollTimer) {
+        startPolling();
+      } else if (!data.running && pollTimer) {
+        stopPolling();
+      }
+    }).fail(function() {
+      // Silently ignore AJAX errors during polling
+    });
+  }
+
+  function startPolling() {
+    if (!pollTimer) {
+      pollTimer = setInterval(refreshStatus, POLL_INTERVAL);
+    }
+  }
+
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  // ---- Actions ----
+
+  window.startRebalance = function(forceRescan) {
+    var force = forceRescan || document.getElementById('opt-force-rescan').checked;
+    var limit = parseInt(document.getElementById('opt-limit').value) || 0;
+    setButtonsLoading(true);
+    $.post(AJAX + 'start.php', { force_rescan: force ? 1 : 0, limit: limit }, function(resp) {
+      if (resp.success) {
+        showToast('Rebalancer started (PID ' + resp.pid + ')', 'success');
+        setTimeout(function() {
+          refreshStatus();
+          startPolling();
+        }, 1000);
+      } else {
+        showToast('Failed to start: ' + (resp.error || 'Unknown error'), 'error');
+      }
+    }, 'json').fail(function() {
+      showToast('Request failed', 'error');
+    }).always(function() { setButtonsLoading(false); });
+  };
+
+  window.stopRebalance = function() {
+    if (!confirm('Send graceful stop signal? The current transfer will finish first.')) return;
+    document.getElementById('btn-stop').disabled = true;
+    $.post(AJAX + 'stop.php', {}, function(resp) {
+      if (resp.success) {
+        showToast(resp.message || 'Stop signal sent', 'info');
+        setTimeout(refreshStatus, 2000);
+      } else {
+        showToast('Failed: ' + (resp.message || 'Unknown'), 'error');
+        document.getElementById('btn-stop').disabled = false;
+      }
+    }, 'json').fail(function() {
+      showToast('Request failed', 'error');
+      document.getElementById('btn-stop').disabled = false;
+    });
+  };
+
+  window.dryRun = function() {
+    var force = document.getElementById('opt-force-rescan').checked;
+    setButtonsLoading(true);
+    showToast('Running dry scan (this may take a few minutes)&hellip;', 'info');
+    $.post(AJAX + 'scan.php', { force_rescan: force ? 1 : 0 }, function(resp) {
+      document.getElementById('dryrun-output-pre').textContent = resp.output || '(no output)';
+      document.getElementById('dryrun-section').style.display = '';
+      if (resp.drives)  updateDiskView(resp.drives);
+      if (resp.summary) updatePlanSummary(resp.summary, 0, 0, []);
+      showToast(resp.success ? 'Dry run complete' : 'Dry run finished with errors', resp.success ? 'success' : 'error');
+      // Refresh full status after scan
+      refreshStatus();
+    }, 'json').fail(function() {
+      showToast('Scan request failed', 'error');
+    }).always(function() { setButtonsLoading(false); });
+  };
+
+  window.retryErrors = function() {
+    setButtonsLoading(true);
+    $.post(AJAX + 'reset_errors.php', {}, function(resp) {
+      if (resp.success) {
+        showToast('Error entries reset to pending', 'success');
+        refreshStatus();
+      } else {
+        showToast('Failed: ' + (resp.error || 'Unknown'), 'error');
+      }
+    }, 'json').fail(function() {
+      showToast('Request failed', 'error');
+    }).always(function() { setButtonsLoading(false); });
+  };
+
+  function setButtonsLoading(state) {
+    ['btn-start','btn-dryrun','btn-retry'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.disabled = state;
+    });
+  }
+
+  // ---- Transfer log ----
+
+  window.loadLog = function() {
+    var lines = parseInt(document.getElementById('log-lines-count').value) || 50;
+    var tbody = document.getElementById('log-tbody');
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#666;padding:12px;"><i class="fa fa-spinner fa-spin"></i> Loading&hellip;</td></tr>';
+    $.getJSON(AJAX + 'get_log.php', { lines: lines }, function(entries) {
+      if (!entries || !entries.length) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#666;padding:12px;">No log entries found.</td></tr>';
+        return;
+      }
+      var html = '';
+      entries.forEach(function(e) {
+        var statusCls = 'status-' + e.status.replace(/[^a-z0-9_]/gi, '_');
+        var ts = e.timestamp ? e.timestamp.replace('T',' ').substring(0,19) : '';
+        html += '<tr>' +
+          '<td style="white-space:nowrap;color:#888;">' + ts + '</td>' +
+          '<td><span class="status-pill ' + statusCls + '">' + e.status + '</span></td>' +
+          '<td style="white-space:nowrap;">' + formatBytes(e.size_bytes) + '</td>' +
+          '<td style="white-space:nowrap;">' + diskName(e.source_disk) + '</td>' +
+          '<td style="white-space:nowrap;">' + diskName(e.target_disk) + '</td>' +
+          '<td title="' + e.path + '" style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + shortPath(e.path) + '</td>' +
+          '</tr>';
+      });
+      tbody.innerHTML = html;
+    }).fail(function() {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;padding:12px;">Failed to load log.</td></tr>';
+    });
+  };
+
+  window.toggleLog = function() {
+    var toggle  = document.getElementById('log-toggle');
+    var content = document.getElementById('log-content');
+    var isCollapsed = toggle.classList.contains('collapsed');
+    if (isCollapsed) {
+      toggle.classList.remove('collapsed');
+      content.style.display = '';
+    } else {
+      toggle.classList.add('collapsed');
+      content.style.display = 'none';
+    }
+  };
+
+  // ---- Init ----
+  $(function() {
+    refreshStatus();
+    <?php if ($running): ?>
+    startPolling();
+    <?php endif; ?>
+  });
+
+})();
+</script>

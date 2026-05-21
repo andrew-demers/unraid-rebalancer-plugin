@@ -1,0 +1,75 @@
+<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+  <!ENTITY name      "rebalancer">
+  <!ENTITY author    "ADemers">
+  <!ENTITY version   "2025.05.21">
+  <!ENTITY launch    "RebalancerMain">
+  <!ENTITY pluginURL "https://raw.githubusercontent.com/ADemers-tricentis/unraid-rebalancer/main/rebalancer-plugin/rebalancer.plg">
+  <!ENTITY pkgURL    "https://github.com/ADemers-tricentis/unraid-rebalancer/releases/download/&version;/rebalancer-&version;.txz">
+  <!ENTITY stateDir  "/boot/config/plugins/&name;">
+  <!ENTITY emhttpDir "/usr/local/emhttp/plugins/&name;">
+]>
+<PLUGIN name="&name;"
+        author="&author;"
+        version="&version;"
+        launch="&launch;"
+        pluginURL="&pluginURL;"
+        min="6.9.0"
+        support="https://github.com/ADemers-tricentis/unraid-rebalancer">
+
+<CHANGES>
+###2025.05.21
+- Initial GUI plugin release wrapping the unraid-rebalancer CLI script
+- Disk overview with usage bars, colour-coded by threshold
+- Live status with auto-poll every 5 seconds while running
+- Plan summary showing pending / cleaned / error counts and bytes to move
+- Start, stop, dry-run, and retry-errors controls
+- Settings page for all configuration options
+- Transfer log viewer (last N entries from transfers.log)
+</CHANGES>
+
+<!-- ================================================================
+     Step 1 – Download and install the package
+     ================================================================ -->
+<FILE Name="&stateDir;/rebalancer-&version;.txz" Run="upgradepkg --install-new &stateDir;/rebalancer-&version;.txz">
+<URL>&pkgURL;</URL>
+</FILE>
+
+<!-- ================================================================
+     Step 2 – Post-install housekeeping
+     ================================================================ -->
+<FILE Run="/bin/bash">
+<INLINE>
+# Create state directory
+mkdir -p &stateDir;
+
+# Remove any old package versions to save space
+ls &stateDir;/rebalancer-*.txz 2>/dev/null | grep -v "&version;" | xargs rm -f 2>/dev/null
+
+# Ensure the Python script is reachable from the plugin dir.
+# The .txz already includes rebalancer.py; this is a belt-and-suspenders
+# symlink in case someone placed the script in the state dir manually.
+if [ -f &stateDir;/rebalancer.py ] && [ ! -f &emhttpDir;/rebalancer.py ]; then
+    ln -sf &stateDir;/rebalancer.py &emhttpDir;/rebalancer.py 2>/dev/null || true
+fi
+
+# Fix permissions
+chmod 755 &emhttpDir;/rebalancer.py 2>/dev/null || true
+
+echo "Rebalancer plugin &version; installed successfully."
+</INLINE>
+</FILE>
+
+<!-- ================================================================
+     Removal script — called by Unraid when plugin is uninstalled
+     ================================================================ -->
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+removepkg &emhttpDir;/rebalancer-&version;.txz 2>/dev/null || true
+# Note: state dir (&stateDir;) is intentionally NOT removed to preserve
+# plan.db, config.json, and transfer logs across reinstalls.
+echo "Rebalancer plugin removed. State data preserved in &stateDir;."
+</INLINE>
+</FILE>
+
+</PLUGIN>

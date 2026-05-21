@@ -1,0 +1,261 @@
+Menu="Utilities:Rebalancer"
+Title="Settings"
+Tag="cog"
+---
+<?php
+require_once '/usr/local/emhttp/plugins/rebalancer/include/common.php';
+$cfg = get_config();
+
+// Current values (with defaults already merged by get_config())
+$max_used       = (int)$cfg['max_used'];
+$strategy       = $cfg['strategy'];
+$excludes       = is_array($cfg['excludes']) ? implode(', ', $cfg['excludes']) : (string)$cfg['excludes'];
+$active_hours   = $cfg['active_hours'] ?? '';
+$min_free_space = $cfg['min_free_space'] ?? '50G';
+$bwlimit        = $cfg['bwlimit'] !== null ? (string)$cfg['bwlimit'] : '';
+$copy_timeout   = (int)($cfg['copy_timeout'] ?? 86400);
+$verify_timeout = (int)($cfg['verify_timeout'] ?? 28800);
+$lsof_timeout   = (int)($cfg['lsof_timeout'] ?? 120);
+
+// Parse active hours into start/end
+$ah_start = '';
+$ah_end   = '';
+if ($active_hours && preg_match('/^(\d{2}:\d{2})-(\d{2}:\d{2})$/', $active_hours, $m)) {
+    $ah_start = $m[1];
+    $ah_end   = $m[2];
+}
+?>
+<link rel="stylesheet" href="/plugins/rebalancer/assets/rebalancer.css">
+
+<div class="rebalancer-main">
+  <div class="section">
+    <div class="rebalancer-header">
+      <h2><i class="fa fa-cog"></i>&nbsp;Rebalancer Settings</h2>
+    </div>
+    <p style="font-size:0.85rem;color:#999;margin-top:4px;">
+      Settings are saved to <code style="color:#aaa;">/boot/config/plugins/rebalancer/config.json</code>
+      and take effect on the next run.
+    </p>
+  </div>
+
+  <div class="section">
+    <form class="settings-form" id="settings-form" onsubmit="return saveSettings(event)">
+
+      <!-- Max Used % -->
+      <div class="form-group">
+        <label class="field-label" for="max-used-range">Max Used % per Disk</label>
+        <div class="range-row">
+          <input type="range" id="max-used-range" name="max_used_range"
+            min="1" max="99" step="1" value="<?= $max_used ?>"
+            oninput="document.getElementById('max-used-num').value=this.value">
+          <input type="number" id="max-used-num" name="max_used"
+            min="1" max="99" value="<?= $max_used ?>" style="max-width:64px;"
+            oninput="document.getElementById('max-used-range').value=this.value">
+          <span class="range-value" id="max-used-display">%</span>
+        </div>
+        <div class="field-hint">
+          Disks above this threshold are considered overloaded and will have data moved off them.
+          Recommended: 80&ndash;85.
+        </div>
+      </div>
+
+      <!-- Strategy -->
+      <div class="form-group">
+        <label class="field-label" for="strategy">Rebalancing Strategy</label>
+        <select id="strategy" name="strategy" style="max-width:240px;">
+          <?php
+          $strategies = ['fullest-first','largest-first','smallest-first','auto'];
+          foreach ($strategies as $s):
+          ?>
+          <option value="<?= $s ?>" <?= $strategy === $s ? 'selected' : '' ?>>
+            <?php
+            $labels = [
+              'fullest-first'  => 'Fullest First (recommended)',
+              'largest-first'  => 'Largest First',
+              'smallest-first' => 'Smallest First',
+              'auto'           => 'Auto (tries all, picks best)',
+            ];
+            echo $labels[$s] ?? $s;
+            ?>
+          </option>
+          <?php endforeach; ?>
+        </select>
+        <div class="field-hint">
+          <strong>Fullest First:</strong> empties the most-loaded disk first, moving its biggest folders.
+          <strong>Auto:</strong> runs all strategies and picks the one with fewest bytes moved.
+        </div>
+      </div>
+
+      <!-- Excluded Shares -->
+      <div class="form-group">
+        <label class="field-label" for="excludes">Excluded Shares</label>
+        <input type="text" id="excludes" name="excludes"
+          value="<?= htmlspecialchars($excludes) ?>"
+          placeholder="Backups, appdata, Development">
+        <div class="field-hint">
+          Comma-separated share names to skip. Typically system shares like
+          <em>appdata</em>, <em>system</em>, <em>domains</em>.
+        </div>
+      </div>
+
+      <!-- Active Hours -->
+      <div class="form-group">
+        <label class="field-label">Active Hours (optional)</label>
+        <div class="time-row">
+          <input type="time" id="ah-start" value="<?= htmlspecialchars($ah_start) ?>" placeholder="22:00">
+          <span>to</span>
+          <input type="time" id="ah-end" value="<?= htmlspecialchars($ah_end) ?>" placeholder="06:00">
+          <button type="button" class="btn btn-secondary" style="padding:4px 10px;font-size:0.8rem;"
+            onclick="clearActiveHours()">Clear</button>
+        </div>
+        <div class="field-hint">
+          Restrict transfers to this time window. Supports overnight ranges (e.g. 22:00&ndash;06:00).
+          Leave blank for no restriction.
+        </div>
+      </div>
+
+      <!-- Bandwidth Limit -->
+      <div class="form-group">
+        <label class="field-label" for="bwlimit">Bandwidth Limit (KB/s)</label>
+        <input type="number" id="bwlimit" name="bwlimit"
+          min="1" value="<?= htmlspecialchars($bwlimit) ?>" placeholder="blank = unlimited"
+          style="max-width:180px;">
+        <div class="field-hint">
+          rsync bandwidth limit in KB/s. Blank = unlimited.
+          50&nbsp;000 &asymp; 50&nbsp;MB/s &nbsp;|&nbsp;
+          100&nbsp;000 &asymp; 100&nbsp;MB/s.
+        </div>
+      </div>
+
+      <!-- Min Free Space -->
+      <div class="form-group">
+        <label class="field-label" for="min-free-space">Min Free Space per Target</label>
+        <input type="text" id="min-free-space" name="min_free_space"
+          value="<?= htmlspecialchars($min_free_space) ?>" placeholder="50G"
+          style="max-width:120px;">
+        <div class="field-hint">
+          Minimum free space that must remain on the target disk after a transfer.
+          Examples: <em>50G</em>, <em>100G</em>, <em>1T</em>.
+        </div>
+      </div>
+
+      <!-- Timeouts section -->
+      <div style="margin-top:8px;margin-bottom:12px;padding-bottom:4px;border-bottom:1px solid #3a3a3a;">
+        <span style="font-size:0.8rem;font-weight:600;color:#999;text-transform:uppercase;letter-spacing:0.05em;">
+          Timeouts
+        </span>
+      </div>
+
+      <!-- Copy Timeout -->
+      <div class="form-group">
+        <label class="field-label" for="copy-timeout">Copy Timeout (seconds)</label>
+        <input type="number" id="copy-timeout" name="copy_timeout"
+          min="1" value="<?= $copy_timeout ?>" style="max-width:140px;">
+        <div class="field-hint">
+          Maximum time for the rsync copy phase per transfer.
+          Default: 86&nbsp;400 (24&nbsp;h). Increase for very large folders over slow links.
+        </div>
+      </div>
+
+      <!-- Verify Timeout -->
+      <div class="form-group">
+        <label class="field-label" for="verify-timeout">Verify Timeout (seconds)</label>
+        <input type="number" id="verify-timeout" name="verify_timeout"
+          min="1" value="<?= $verify_timeout ?>" style="max-width:140px;">
+        <div class="field-hint">
+          Maximum time for the rsync checksum verify phase per transfer.
+          Default: 28&nbsp;800 (8&nbsp;h).
+        </div>
+      </div>
+
+      <!-- lsof Timeout -->
+      <div class="form-group">
+        <label class="field-label" for="lsof-timeout">lsof Timeout (seconds)</label>
+        <input type="number" id="lsof-timeout" name="lsof_timeout"
+          min="1" value="<?= $lsof_timeout ?>" style="max-width:140px;">
+        <div class="field-hint">
+          Maximum time for lsof in-use checks. Default: 120&nbsp;s. Increase for very large directories.
+        </div>
+      </div>
+
+      <!-- Save button -->
+      <div style="margin-top:8px;">
+        <button type="submit" class="btn btn-primary" id="btn-save">
+          <i class="fa fa-save"></i> Save Settings
+        </button>
+      </div>
+
+    </form>
+  </div>
+
+</div><!-- .rebalancer-main -->
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+(function() {
+  'use strict';
+
+  var AJAX = '/plugins/rebalancer/include/ajax/';
+
+  // Keep range + number inputs in sync
+  var rangeEl = document.getElementById('max-used-range');
+  var numEl   = document.getElementById('max-used-num');
+
+  function showToast(msg, type) {
+    var t = document.createElement('div');
+    t.className = 'toast ' + (type || 'info');
+    t.textContent = msg;
+    document.getElementById('toast-container').appendChild(t);
+    setTimeout(function() { t.remove(); }, 4000);
+  }
+
+  window.clearActiveHours = function() {
+    document.getElementById('ah-start').value = '';
+    document.getElementById('ah-end').value   = '';
+  };
+
+  window.saveSettings = function(e) {
+    e.preventDefault();
+    var btn = document.getElementById('btn-save');
+    btn.disabled = true;
+
+    var ahStart = document.getElementById('ah-start').value.trim();
+    var ahEnd   = document.getElementById('ah-end').value.trim();
+    var ahValue = '';
+    if (ahStart && ahEnd) {
+      ahValue = ahStart + '-' + ahEnd;
+    } else if (ahStart || ahEnd) {
+      showToast('Please set both start and end times for Active Hours, or clear both.', 'error');
+      btn.disabled = false;
+      return false;
+    }
+
+    var data = {
+      max_used:       numEl.value,
+      strategy:       document.getElementById('strategy').value,
+      excludes:       document.getElementById('excludes').value,
+      active_hours:   ahValue,
+      min_free_space: document.getElementById('min-free-space').value,
+      bwlimit:        document.getElementById('bwlimit').value,
+      copy_timeout:   document.getElementById('copy-timeout').value,
+      verify_timeout: document.getElementById('verify-timeout').value,
+      lsof_timeout:   document.getElementById('lsof-timeout').value,
+    };
+
+    $.post(AJAX + 'save_settings.php', data, function(resp) {
+      if (resp.success) {
+        showToast('Settings saved successfully', 'success');
+      } else {
+        showToast('Error: ' + (resp.error || 'Unknown error'), 'error');
+      }
+    }, 'json').fail(function() {
+      showToast('Request failed — check server logs', 'error');
+    }).always(function() { btn.disabled = false; });
+
+    return false;
+  };
+
+})();
+</script>
