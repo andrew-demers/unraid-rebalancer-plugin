@@ -49,7 +49,7 @@ ls &stateDir;/rebalancer-*.txz 2>/dev/null | grep -v "&version;" | xargs rm -f 2
 # Ensure the Python script is reachable from the plugin dir.
 # The .txz already includes rebalancer.py; this is a belt-and-suspenders
 # symlink in case someone placed the script in the state dir manually.
-if [ -f &stateDir;/rebalancer.py ] && [ ! -f &emhttpDir;/rebalancer.py ]; then
+if [ -f &stateDir;/rebalancer.py ] &amp;&amp; [ ! -f &emhttpDir;/rebalancer.py ]; then
     ln -sf &stateDir;/rebalancer.py &emhttpDir;/rebalancer.py 2>/dev/null || true
 fi
 
