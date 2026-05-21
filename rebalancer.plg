@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
   <!ENTITY name      "rebalancer">
   <!ENTITY author    "ADemers">
-  <!ENTITY version   "2025.05.21">
+  <!ENTITY version   "2025.05.21b">
   <!ENTITY launch    "RebalancerMain">
   <!ENTITY pluginURL "https://raw.githubusercontent.com/andrew-demers/unraid-rebalancer-plugin/main/rebalancer.plg">
   <!ENTITY pkgURL    "https://github.com/andrew-demers/unraid-rebalancer-plugin/releases/download/v&version;/rebalancer-&version;.txz">
@@ -18,6 +18,11 @@
         support="https://github.com/andrew-demers/unraid-rebalancer-plugin">
 
 <CHANGES>
+###2025.05.21b
+- Replace raw terminal dry run output with a structured result card
+- Strip ANSI escape codes and banner from scan output
+- Raw output now only shown on errors
+
 ###2025.05.21
 - Initial GUI plugin release wrapping the unraid-rebalancer CLI script
 - Disk overview with usage bars, colour-coded by threshold

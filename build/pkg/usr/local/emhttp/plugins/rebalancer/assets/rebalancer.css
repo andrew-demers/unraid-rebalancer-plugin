@@ -296,6 +296,56 @@
     font-size: 0.85rem;
 }
 
+/* ----- Dry run result card ----- */
+.dryrun-result-card {
+    margin-top: 12px;
+}
+
+.dryrun-summary {
+    background: #1e2a1e;
+    border: 1px solid #2d4a2d;
+    border-radius: 6px;
+    padding: 14px 18px;
+}
+
+.dryrun-summary-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dryrun-summary-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.dryrun-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 80px;
+}
+
+.dryrun-stat .ds-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #e0e0e0;
+    line-height: 1.2;
+}
+
+.dryrun-stat .ds-label {
+    font-size: 0.72rem;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 2px;
+    text-align: center;
+}
+
 /* ----- Dry run output ----- */
 .dryrun-output {
     margin-top: 12px;

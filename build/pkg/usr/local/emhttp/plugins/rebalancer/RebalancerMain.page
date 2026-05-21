@@ -103,15 +103,15 @@ $config  = get_config();
       </p>
     </div>
 
-    <!-- Dry run output (collapsible) -->
+    <!-- Dry run result card -->
     <div id="dryrun-section" style="display:none; margin-top:14px;">
-      <div style="font-size:0.82rem;font-weight:600;color:#aaa;margin-bottom:6px;">
-        <i class="fa fa-file-text-o"></i> Dry Run Output
-        <button class="btn btn-secondary" style="padding:2px 8px;font-size:0.75rem;margin-left:8px;" onclick="$('#dryrun-section').hide();">
-          <i class="fa fa-times"></i>
-        </button>
+      <div class="dryrun-result-card" id="dryrun-result-card"></div>
+      <div id="dryrun-errors" style="display:none; margin-top:10px;">
+        <div style="font-size:0.8rem;font-weight:600;color:#ef4444;margin-bottom:6px;">
+          <i class="fa fa-exclamation-triangle"></i> Output
+        </div>
+        <div class="dryrun-output"><pre id="dryrun-output-pre"></pre></div>
       </div>
-      <div class="dryrun-output"><pre id="dryrun-output-pre"></pre></div>
     </div>
   </div>
 
@@ -373,14 +373,48 @@ $config  = get_config();
   window.dryRun = function() {
     var force = document.getElementById('opt-force-rescan').checked;
     setButtonsLoading(true);
-    showToast('Running dry scan (this may take a few minutes)&hellip;', 'info');
+    showToast('Running dry scan… this may take a moment', 'info');
     $.post(AJAX + 'scan.php', { force_rescan: force ? 1 : 0 }, function(resp) {
-      document.getElementById('dryrun-output-pre').textContent = resp.output || '(no output)';
-      document.getElementById('dryrun-section').style.display = '';
       if (resp.drives)  updateDiskView(resp.drives);
       if (resp.summary) updatePlanSummary(resp.summary, 0, 0, []);
+
+      // Build result card
+      var s = resp.summary || {};
+      var pending  = s.pending  || 0;
+      var cleaned  = s.cleaned  || 0;
+      var errors   = Object.keys(s).filter(function(k){ return k.indexOf('error') === 0; })
+                      .reduce(function(a,k){ return a + (s[k]||0); }, 0);
+
+      var icon  = resp.success ? 'fa-check-circle' : 'fa-exclamation-triangle';
+      var color = resp.success ? '#4cef4c' : '#ef4444';
+      var label = resp.success ? 'Dry run complete &mdash; no data moved' : 'Dry run finished with errors';
+
+      var card = '<div class="dryrun-summary">' +
+        '<div class="dryrun-summary-title" style="color:' + color + ';">' +
+          '<i class="fa ' + icon + '"></i> ' + label +
+        '</div>' +
+        '<div class="dryrun-summary-stats">' +
+          '<div class="dryrun-stat"><span class="ds-value" style="color:#e8c040;">' + pending + '</span><span class="ds-label">Pending transfers</span></div>';
+      if (resp.total_bytes > 0) {
+        card += '<div class="dryrun-stat"><span class="ds-value">' + formatBytes(resp.total_bytes || 0) + '</span><span class="ds-label">Total to move</span></div>';
+      }
+      if (errors > 0) {
+        card += '<div class="dryrun-stat"><span class="ds-value" style="color:#ef4444;">' + errors + '</span><span class="ds-label">Errors</span></div>';
+      }
+      card += '</div></div>';
+      document.getElementById('dryrun-result-card').innerHTML = card;
+      document.getElementById('dryrun-section').style.display = '';
+
+      // Only show raw output on failure
+      var errDiv = document.getElementById('dryrun-errors');
+      if (!resp.success && resp.output) {
+        document.getElementById('dryrun-output-pre').textContent = resp.output;
+        errDiv.style.display = '';
+      } else {
+        errDiv.style.display = 'none';
+      }
+
       showToast(resp.success ? 'Dry run complete' : 'Dry run finished with errors', resp.success ? 'success' : 'error');
-      // Refresh full status after scan
       refreshStatus();
     }, 'json').fail(function() {
       showToast('Scan request failed', 'error');

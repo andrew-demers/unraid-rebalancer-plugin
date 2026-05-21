@@ -75,7 +75,19 @@ if ($old_limit !== false) {
     ini_set('max_execution_time', $old_limit);
 }
 
-$output = $stdout . ($stderr ? "\n--- stderr ---\n" . $stderr : '');
+$combined = $stdout . ($stderr ? "\n" . $stderr : '');
+// Strip ANSI escape sequences and the ASCII banner block
+$combined = preg_replace('/\x1b\[[0-9;]*[A-Za-z]/u', '', $combined);
+$lines = explode("\n", $combined);
+$filtered = [];
+$in_banner = false;
+foreach ($lines as $line) {
+    // Skip the ASCII-art banner lines (lines of mostly special chars / spaces before v\d)
+    if (preg_match('/^[\s\x00-\x1f#@$%^&*|\\\\\/\'"~`!?.,;:+=\-_<>{}()\[\]]{8,}$/', $line)) continue;
+    $filtered[] = $line;
+}
+$output = implode("\n", $filtered);
+$output = trim($output);
 $success = ($exit_code === 0);
 
 // Refresh drives and summary after scan
